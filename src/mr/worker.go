@@ -75,7 +75,7 @@ func Worker(mapf func(string, string) []KeyValue,
 				completedTasks[task.TaskId+10000] = true
 			}
 		case Wait:
-			//log.Printf("Worker %d: 当前没有可用任务，等待中...", workerId)
+			log.Printf("Worker %d: 当前没有可用任务，等待中...", workerId)
 			// 等待一段时间后再次请求任务
 			time.Sleep(1 * time.Second)
 		case Exit:
@@ -92,7 +92,6 @@ func requestTask() TaskReply {
 	if ok := call("Master.RequestTask", &args, &reply); !ok {
 		os.Exit(0)
 	}
-
 	return reply
 }
 
