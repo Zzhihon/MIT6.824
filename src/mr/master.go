@@ -2,6 +2,7 @@ package mr
 
 import (
 	"log"
+	"math/rand" // 添加随机数包
 	"net"
 	"net/http"
 	"net/rpc"
@@ -67,7 +68,7 @@ const (
 	CompletePhase
 )
 
-const MapTaskTimeout = 15 * time.Second
+const MapTaskTimeout = 25 * time.Second
 const ReduceTaskTimeout = 3 * time.Second
 
 // RPC处理器 - 请求任务
@@ -143,22 +144,30 @@ func (m *Master) handleRequestTask(msg requestTaskMsg) {
 
 	// 根据当前阶段分配任务
 	if m.phase == MapPhase {
-		// 尝试分配Map任务
+		// 使用随机顺序分配Map任务
+		availableTasks := []int{}
 		for i := range m.mapTasks {
 			if m.mapTasks[i].Status == Idle {
-				m.mapTasks[i].Status = InProgress
-				m.mapTasks[i].StartTime = time.Now()
-
-				reply.TaskType = Map
-				reply.TaskId = i
-				reply.InputFile = m.mapTasks[i].InputFile
-				reply.NReduce = m.nReduce
-				reply.NMap = m.nMap
-
-				log.Printf("Master: 分配Map任务 #%d，输入文件: %s", i, m.mapTasks[i].InputFile)
-				msg.done <- struct{}{}
-				return
+				availableTasks = append(availableTasks, i)
 			}
+		}
+
+		if len(availableTasks) > 0 {
+			// 随机选择一个可用任务
+			taskIdx := availableTasks[rand.Intn(len(availableTasks))]
+
+			m.mapTasks[taskIdx].Status = InProgress
+			m.mapTasks[taskIdx].StartTime = time.Now()
+
+			reply.TaskType = Map
+			reply.TaskId = taskIdx
+			reply.InputFile = m.mapTasks[taskIdx].InputFile
+			reply.NReduce = m.nReduce
+			reply.NMap = m.nMap
+
+			log.Printf("Master: 分配Map任务 #%d，输入文件: %s", taskIdx, m.mapTasks[taskIdx].InputFile)
+			msg.done <- struct{}{}
+			return
 		}
 
 		// 检查是否所有Map任务都已完成或正在处理中
@@ -184,21 +193,29 @@ func (m *Master) handleRequestTask(msg requestTaskMsg) {
 		msg.done <- struct{}{}
 		return
 	} else if m.phase == ReducePhase {
-		// 尝试分配Reduce任务
+		// 使用随机顺序分配Reduce任务
+		availableTasks := []int{}
 		for i := range m.reduceTasks {
 			if m.reduceTasks[i].Status == Idle {
-				m.reduceTasks[i].Status = InProgress
-				m.reduceTasks[i].StartTime = time.Now()
-
-				reply.TaskType = Reduce
-				reply.TaskId = i
-				reply.NReduce = m.nReduce
-				reply.NMap = m.nMap
-
-				log.Printf("Master: 分配Reduce任务 #%d", i)
-				msg.done <- struct{}{}
-				return
+				availableTasks = append(availableTasks, i)
 			}
+		}
+
+		if len(availableTasks) > 0 {
+			// 随机选择一个可用任务
+			taskIdx := availableTasks[rand.Intn(len(availableTasks))]
+
+			m.reduceTasks[taskIdx].Status = InProgress
+			m.reduceTasks[taskIdx].StartTime = time.Now()
+
+			reply.TaskType = Reduce
+			reply.TaskId = taskIdx
+			reply.NReduce = m.nReduce
+			reply.NMap = m.nMap
+
+			log.Printf("Master: 分配Reduce任务 #%d", taskIdx)
+			msg.done <- struct{}{}
+			return
 		}
 
 		// 检查是否所有Reduce任务都已完成或正在处理中
@@ -413,6 +430,9 @@ func (m *Master) Done() bool {
 // main/mrmaster.go calls this function.
 // nReduce is the number of reduce tasks to use.
 func MakeMaster(files []string, nReduce int) *Master {
+	// 初始化随机数种子
+	rand.Seed(time.Now().UnixNano())
+
 	m := Master{}
 
 	// 初始化通道
